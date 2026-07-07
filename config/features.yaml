@@ -1,0 +1,87 @@
+# Feature Extraction Configuration
+
+# ── Sample rate ────────────────────────────────────────────────────────────────
+# Target sample rate applied BEFORE feature extraction.
+# All audio is resampled to this rate regardless of original device/dataset SR.
+# Set to null to disable resampling (audio kept at its native rate — not
+# recommended when mixing ICBHI devices or combining both datasets).
+# Common choices: 4000, 8000, 16000, 22050
+target_sr: 8000
+
+# ── Duration / length normalisation ───────────────────────────────────────────
+# Fixed duration (seconds) that every cycle segment is normalised to BEFORE
+# computing spectral features. Chosen to cover ~99th percentile of ICBHI cycles.
+# Cycles shorter than this are padded; longer ones are truncated.
+target_duration_s: 7.0
+
+# Padding strategy applied to the waveform (before any feature transform).
+# Options:
+#   reflect   — mirror-pad at both edges (default; avoids zero-edge spectral artifacts)
+#   zero      — pad with digital silence (simple; may introduce boundary artifacts)
+#   replicate — repeat the edge sample
+pad_mode: reflect
+
+# Where the real signal is placed within the padded window.
+# Options: center (recommended), start, end
+pad_alignment: center
+
+# Length normalisation approach.
+# Options:
+#   pad_truncate — pad short, truncate long (recommended; no pitch distortion)
+#   time_stretch — stretch/squash to target duration using a phase-vocoder
+#                  (changes temporal density but preserves pitch; slower)
+#   null         — no length normalisation; cycles are left at their native length
+length_mode: null
+
+butterworth_filter:
+  # Apply a Butterworth bandpass filter to the waveform before feature extraction.
+  # This can help remove low-frequency noise and high-frequency artifacts.
+  # Set to null to disable filtering.
+  enabled: true
+  lowcut: 25.0          # Low cutoff frequency (Hz)
+  highcut: 2500.0       # High cutoff frequency (Hz)
+  order: 10              # Filter order (higher = steeper roll-off)
+
+# ── Log-mel spectrogram ───────────────────────────────────────────────────────
+logmel:
+  n_fft: 128          # FFT window size (samples)
+  hop_length: 32      # hop between frames (samples) → ~16ms at 16kHz
+  win_length: 128     # analysis window length (samples); equal to n_fft by default
+  n_mels: 128          # number of mel filterbank channels
+  fmin: 50.0           # lowest mel frequency (Hz) — below most breath sounds is fine
+  fmax: 3000.0         # highest mel frequency (Hz) — wheezes top out ~1200 Hz
+  power: 2.0           # power spectrogram exponent (2.0 = power; 1.0 = magnitude)
+  top_db: 80.0         # dynamic range clip applied after log compression (dB)
+
+# ── MFCC ──────────────────────────────────────────────────────────────────────
+mfcc:
+  n_fft: 1024
+  hop_length: 256
+  win_length: 1024
+  n_mels: 128          # mel filterbank channels used internally before DCT
+  n_mfcc: 40           # number of cepstral coefficients to keep
+  fmin: 50.0
+  fmax: 2000.0
+  include_delta: true  # append delta (velocity) coefficients → 2×n_mfcc rows
+  include_delta2: true # append delta-delta (acceleration) → 3×n_mfcc rows total
+
+# ── STFT (magnitude or power) ─────────────────────────────────────────────────
+stft:
+  n_fft: 1024
+  hop_length: 256
+  win_length: 1024
+  output: magnitude    # "magnitude" | "power" | "db" (log-compressed power)
+  # Frequency truncation: keep only bins up to max_freq_hz to reduce dimensionality.
+  # Set to null to keep all bins (n_fft//2 + 1 = 513 bins at n_fft=1024).
+  max_freq_hz: 2000.0
+
+# ── Output ────────────────────────────────────────────────────────────────────
+output:
+  base_dir: data/processed
+  # Features are saved under:
+  #   <base_dir>/features/<dataset>/<feature_type>/<param_tag>/<cycle_id>.npy
+  # where <param_tag> is auto-generated from the above params (e.g. nm128_h256_sr16000)
+  # so multiple runs with different params coexist without overwriting each other.
+  metadata_file: data/processed/metadata.parquet
+  # If true, skip cycles whose .npy file already exists (safe to re-run incrementally)
+  skip_existing: true

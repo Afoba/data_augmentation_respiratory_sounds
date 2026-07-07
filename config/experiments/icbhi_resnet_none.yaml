@@ -1,0 +1,101 @@
+# Experiment configuration — one file per run.
+# This is the single source of truth for reproducing a training run: it
+# specifies data selection, model, loss, optimizer, and run bookkeeping.
+#
+# Usage: python src/training/train.py --config config/experiments/baseline_icbhi_resnet18.yaml
+
+run:
+  name: icbhi_resnet_none      # used as the output subdirectory name
+  seed: 42
+  output_dir: results                # checkpoints/results land under <output_dir>/<run.name>/
+  device: cuda                       # "cuda" | "cpu" | "mps" — falls back to cpu if unavailable
+
+data:
+  features_cfg: config/features.yaml # path to the features.yaml used to build the cache
+                                      # (read for metadata_file location and target_sr, not re-extracted)
+  feature_type: logmel               # "logmel" | "mfcc" | "stft" — must match a cached feature_type
+  label_scheme: 4class                # "4class" | "coarse" | "fine" — see dataset.py docstring
+                                      # ("fine" avoids SPRSound's stridor/rhonchi -> wheeze merge)
+  class_list: [normal, crackle, wheeze, both]
+                                      # REQUIRED, explicit — determines label index order.
+                                      # For label_scheme: fine, list SPRSound's native classes instead.
+
+  # Which datasets to include. Datasets are combined into one training pool;
+  # label_scheme must make sense for all of them (4class/coarse works for
+  # both ICBHI and SPRSound; fine only has full meaning for SPRSound, though
+  # ICBHI cycles still load fine since label_fine == label_4class for ICBHI).
+  datasets: [icbhi]                  # "icbhi" | "sprsound"
+
+  # Which provenance types to include in the TRAINING pool. val/test always
+  # restrict to source_type: [real] regardless of this setting — see train.py.
+  source_types: [real]               # add "augmented" and/or "synthetic" to include those
+  generators: null                   # optional: restrict augmented/synthetic rows to specific
+                                      # generator values, e.g. ["pitch_shift_+1", "pitch_shift_-1"]
+                                      # null = include all generators that match source_types
+
+  # SPRSound quality filter — set to true to drop "poor_quality" cycles
+  # (no effect on ICBHI, which has no quality field)
+  exclude_poor_quality: false
+
+data_loader:
+  batch_size: 32
+  num_workers: 4
+  shuffle_train: true
+  weighted_sampler: false           # opt-in minority-class oversampling via WeightedRandomSampler.
+                                     # When true, shuffle_train is ignored (sampler controls draw order).
+                                     # NOTE: using this alongside loss.class_weighting applies two
+                                     # independent imbalance corrections and can over-correct — use
+                                     # one or the other unless you have a specific reason to combine.
+  weighted_sampler_strategy: effective_number
+                                     # only used when weighted_sampler: true.
+                                     # same options as loss.class_weighting:
+                                     # "inverse_frequency" | "inverse_sqrt_frequency" | "effective_number"
+
+augmentation:
+  # On-the-fly spectrogram augmentation applied to TRAINING data only
+  # (never applied to val/test). See preprocessing/augmentation/spectrogram.py.
+  # Note: pitch-shifting is NOT configured here — it is controlled through
+  # data.source_types (whether to include pre-cached pitch-shifted data)
+  # rather than being applied live during training.
+  spec_augment:
+    enabled: true
+    freq_mask_param: 15
+    time_mask_param: 25
+    n_freq_masks: 2
+    n_time_masks: 2
+    p: 0.8
+  mixup:
+    enabled: false
+    alpha: 0.4
+    label_mode: soft                 # "soft" | "same_class_only"
+    p: 0.5
+
+model:
+  name: resnet18
+  pretrained: true                   # requires internet access on first run (downloads + caches weights)
+  freeze_backbone: false             # true = linear probe, false = full fine-tune
+  input_size: [224, 224]
+
+loss:
+  class_weighting: none              # "none" (default) | "inverse_frequency" |
+                                      # "inverse_sqrt_frequency" | "effective_number"
+  beta: 0.999                        # only used if class_weighting: effective_number
+  label_smoothing: 0.0
+
+optimizer:
+  name: adamw                        # "adamw" | "sgd"
+  lr: 0.0003
+  weight_decay: 0.0001
+  momentum: 0.9                      # only used if optimizer.name: sgd
+
+scheduler:
+  name: cosine                       # "none" | "cosine" | "step"
+  step_size: 10                      # only used if scheduler.name: step
+  gamma: 0.1                         # only used if scheduler.name: step
+
+training:
+  epochs: 50
+  early_stopping_patience: 20         # epochs with no val-metric improvement before stopping; null to disable
+  checkpoint_metric: icbhi_score     # which val metric to track for "best" checkpoint:
+                                      # "icbhi_score" | "accuracy" | "f1_macro"
+  grad_clip_norm: null               # optional gradient clipping max-norm; null to disable

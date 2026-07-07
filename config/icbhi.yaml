@@ -1,0 +1,42 @@
+# ICBHI 2017 Dataset Configuration
+dataset: icbhi
+
+# Path to the raw ICBHI directory (edit to your local path)
+# Expected layout:
+#   raw_dir/
+#     <pid>_<session>_<loc>_<mode>_<device>.wav  (or .flac)
+#     <pid>_<session>_<loc>_<mode>_<device>.txt   (cycle annotations)
+#     ICBHI_Challenge_diagnosis.txt               (patient diagnoses)
+#     ICBHI_Challenge_train_test.txt              (official split)
+raw_dir: data/raw/icbhi
+
+# Official train/test split file (relative to raw_dir)
+# Each line: <filename> <train|test>
+split_file: ICBHI_Challenge_train_test.txt
+
+# Diagnosis file (relative to raw_dir) — stored in metadata but not used as label
+diagnosis_file: ICBHI_Challenge_diagnosis.txt
+
+# Audio file extensions to search for (in order of preference)
+audio_extensions: [".wav", ".flac"]
+
+# ICBHI cycle label mapping
+# Annotation txt columns: start_time end_time crackle wheeze
+# We derive both a 4-class label and two binary labels for flexibility
+label_map:
+  # (crackle, wheeze) -> 4-class label
+  "0,0": normal
+  "1,0": crackle
+  "0,1": wheeze
+  "1,1": both
+
+# Recording devices present in ICBHI and their native sample rates
+# Used for documentation and optional per-device filtering
+device_sample_rates:
+  AKGC417L: 44100
+  LittC2SE: 4000
+  Meditron: 4000
+  PCSC: 10000
+
+# Whether to store device id in metadata (always true; used for stratification)
+store_device: true

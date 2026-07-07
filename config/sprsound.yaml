@@ -1,0 +1,86 @@
+# SPRSound Dataset Configuration
+dataset: sprsound
+
+# Path to the raw SPRSound directory (edit to your local path)
+#
+# TWO physical layouts are supported, auto-detected at load time:
+#
+#   Layout (a) — combined test set + separate subset-tag folders (siblings of raw_dir):
+#     raw_dir/
+#       train2022_wav/            <recording_id>.wav   (1,949 files)
+#       train2022_json/           <recording_id>.json
+#       test2022_wav/             <recording_id>.wav   (734 files)
+#       test2022_json/            <recording_id>.json  (all 734, combined)
+#       inter_test_json/          <recording_id>.json  (355 files — unseen patients)
+#       intra_test_json/          <recording_id>.json  (379 files — patients also in train)
+#
+#   Layout (b) — inter/intra NESTED inside test2022_json/, no combined set:
+#     raw_dir/
+#       train2022_wav/            <recording_id>.wav
+#       train2022_json/           <recording_id>.json
+#       test2022_wav/             <recording_id>.wav
+#       test2022_json/
+#         inter_test_json/        <recording_id>.json  (unseen patients)
+#         intra_test_json/        <recording_id>.json  (patients also in train)
+#       (test2022_json/ has NO loose .json files directly inside it)
+#
+# The loader auto-detects which is present (checks whether test2022_json/
+# contains loose .json files or only the two subfolders) — no config change
+# needed either way, but the directory names below must still match whatever
+# you actually have.
+raw_dir: data/raw/sprsound
+
+train_wav_dir:  train2022_wav
+train_json_dir: train2022_json
+test_wav_dir:   test2022_wav
+test_json_dir:  test2022_json
+inter_test_json_dir: inter_test_json
+intra_test_json_dir: intra_test_json
+
+# Fine-grained 7-class label set (native SPRSound event labels)
+# Stored as `label_fine` in metadata
+fine_label_set:
+  - normal
+  - rhonchi
+  - wheeze
+  - stridor
+  - coarse_crackle
+  - fine_crackle
+  - wheeze_and_crackle
+
+# Coarse 4-class label set compatible with ICBHI (stored as `label_coarse`)
+# Mapping from fine -> coarse
+coarse_label_map:
+  normal: normal
+  rhonchi: wheeze          # rhonchi are low-pitched continuous sounds, closest to wheeze
+  wheeze: wheeze
+  stridor: wheeze          # stridor is a continuous high-pitched sound, mapped to wheeze
+  coarse_crackle: crackle
+  fine_crackle: crackle
+  wheeze_and_crackle: both
+
+# Record-level quality/category annotation values, as they appear verbatim
+# in `recording_annotation` (event-level JSON has NO separate quality field —
+# "Poor Quality" recordings are signalled entirely through this record-level
+# value, alongside Normal / CAS / DAS / CAS & DAS).
+# Stored normalised (lowercased, spaces->underscores) as `quality` in
+# metadata for any value that indicates poor signal quality; the full
+# original record-level category is stored separately as `record_label`.
+poor_quality_values:
+  - poor_quality
+
+# JSON annotation field names (internal — match the real BioCAS json schema;
+# do not change unless SPRSound revises its format).
+# Real example:
+#   {"recording_annotation": "Normal",
+#    "event_annotation": [{"start": 342, "end": 2515, "type": "Normal"}, ...]}
+# start/end are in MILLISECONDS, not seconds — the loader converts to seconds.
+json_fields:
+  event_label: type                   # field name for the per-event label in the json
+  event_start: start                  # field name for event start time (MILLISECONDS)
+  event_end: end                      # field name for event end time (MILLISECONDS)
+  record_label: recording_annotation  # field name for the recording-level label
+  event_time_unit: ms                 # "ms" | "s" — unit of start/end in the json
+
+# Native sample rate for SPRSound recordings
+native_sr: 8000
