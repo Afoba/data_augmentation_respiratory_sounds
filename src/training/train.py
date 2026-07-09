@@ -250,6 +250,14 @@ def build_scheduler(optimizer: torch.optim.Optimizer, sched_cfg: dict, epochs: i
         return torch.optim.lr_scheduler.StepLR(
             optimizer, step_size=sched_cfg.get("step_size", 10), gamma=sched_cfg.get("gamma", 0.1)
         )
+    elif name == "plateau":
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, 
+            mode='min',      # 'min' if monitoring validation loss, 'max' for accuracy
+            factor=sched_cfg.get("factor", 0.5),      # The "gradient factor"
+            patience=sched_cfg.get("patience", 10), 
+            verbose=True
+        )
     else:
         raise ValueError(f"Unknown scheduler: {name!r}. Choose 'none', 'cosine', or 'step'.")
 
@@ -482,7 +490,7 @@ def main():
         val_loss = compute_val_loss(model, val_loader, criterion, device)
 
         if scheduler is not None:
-            scheduler.step()
+            scheduler.step(val_loss if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau) else None)
 
         current_metric_value = val_overall.get(checkpoint_metric, -float("inf"))
         logger.info(
@@ -518,8 +526,8 @@ def main():
 
     # ── Final test evaluation (using best checkpoint) ────────────────────────
     test_metrics = {}
-    if test_loader is not None and (ckpt_dir / "best.pt").exists():
-        best_ckpt = torch.load(ckpt_dir / "best.pt", map_location=device)
+    if test_loader is not None and (ckpt_dir / "last.pt").exists():
+        best_ckpt = torch.load(ckpt_dir / "last.pt", map_location=device)
         model.load_state_dict(best_ckpt["model_state_dict"])
         test_subset_col = (
             pools["test"].drop_duplicates(subset=["cycle_id"])["test_subset"].values

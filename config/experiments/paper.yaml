@@ -58,7 +58,7 @@ augmentation:
   # data.source_types (whether to include pre-cached pitch-shifted data)
   # rather than being applied live during training.
   spec_augment:
-    enabled: false
+    enabled: true
     freq_mask_param: 15
     time_mask_param: 25
     n_freq_masks: 2
@@ -89,9 +89,12 @@ optimizer:
   momentum: 0.9                      # only used if optimizer.name: sgd
 
 scheduler:
-  name: none                       # "none" | "cosine" | "step"
+  name: plateau                       # "none" | "cosine" | "step" | "plateau"
   step_size: 10                      # only used if scheduler.name: step
   gamma: 0.1                         # only used if scheduler.name: step
+
+  patience: 10                        # only used if scheduler.name: plateau
+  factor: 0.5                          # only used if scheduler.name: plateau
 
 training:
   epochs: 150
