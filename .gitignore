@@ -5,3 +5,4 @@ data/
 results/
 __pycache__/
 *.pyc
+slurm-*.out
