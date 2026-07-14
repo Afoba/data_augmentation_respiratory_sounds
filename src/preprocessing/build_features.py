@@ -143,7 +143,7 @@ def process_cycle(
         )
 
         # Check if the filter config exists and is enabled
-        filter_cfg = feat_cfg.get("filter", {})
+        filter_cfg = feat_cfg.get("butterworth_filter", {})
         if filter_cfg.get("enabled", False):
             waveform = apply_bandpass_filter(
                 waveform, 

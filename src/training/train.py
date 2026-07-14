@@ -526,8 +526,8 @@ def main():
 
     # ── Final test evaluation (using best checkpoint) ────────────────────────
     test_metrics = {}
-    if test_loader is not None and (ckpt_dir / "last.pt").exists():
-        best_ckpt = torch.load(ckpt_dir / "last.pt", map_location=device)
+    if test_loader is not None and (ckpt_dir / "best.pt").exists():
+        best_ckpt = torch.load(ckpt_dir / "best.pt", map_location=device)
         model.load_state_dict(best_ckpt["model_state_dict"])
         test_subset_col = (
             pools["test"].drop_duplicates(subset=["cycle_id"])["test_subset"].values
