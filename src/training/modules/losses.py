@@ -28,7 +28,7 @@ ALSO oversampling via augmentation compounds the correction twice).
                               beta is a config knob, default 0.999.
     none                     : plain unweighted cross-entropy (default).
 """
-
+from __future__ import annotations
 import logging
 
 import numpy as np
