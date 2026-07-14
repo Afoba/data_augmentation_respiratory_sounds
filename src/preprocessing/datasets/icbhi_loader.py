@@ -23,7 +23,7 @@ not on any ICBHI-specific field):
     device          str   recording device name
     diagnosis       str   patient diagnosis (from ICBHI_Challenge_diagnosis.txt)
 """
-
+from __future__ import annotations
 import os
 import re
 import logging

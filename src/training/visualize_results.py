@@ -36,7 +36,7 @@ label_scheme: "fine" runs (SPRSound's native classes don't define a
 normal-vs-abnormal binary collapse the same way), confusion_matrix needs at
 least a test split, inter/intra lines only appear if that data exists.
 """
-
+from __future__ import annotations
 import argparse
 import json
 import logging

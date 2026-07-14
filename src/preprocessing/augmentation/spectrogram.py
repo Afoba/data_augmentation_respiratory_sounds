@@ -36,7 +36,7 @@ Usage
     mixer = SpectrogramMixup(alpha=0.4, label_mode="soft")
     mixed_specs, mixed_labels = mixer(batch_specs, batch_labels_onehot)
 """
-
+from __future__ import annotations
 import logging
 import warnings
 

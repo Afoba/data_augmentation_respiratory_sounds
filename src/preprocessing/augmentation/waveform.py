@@ -26,7 +26,7 @@ of the SAME shape as the input (callers handle any necessary re-padding).
 - additive_noise / gain / time_shift: considered safe, do not alter the
   underlying spectral/temporal characteristics that define crackle/wheeze.
 """
-
+from __future__ import annotations
 import logging
 import numpy as np
 

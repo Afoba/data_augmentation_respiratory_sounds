@@ -9,7 +9,7 @@ Loads a single-channel waveform from a given audio file, slices out a
 Depends on librosa for audio I/O and resampling. soundfile is used as the
 backend where possible (faster and more format-flexible than audioread).
 """
-
+from __future__ import annotations
 import logging
 from pathlib import Path
 

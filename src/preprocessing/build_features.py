@@ -39,7 +39,7 @@ Examples
     # Re-run without overwriting existing .npy files (controlled by skip_existing in features.yaml)
     python build_features.py
 """
-
+from __future__ import annotations
 import argparse
 import logging
 import os
