@@ -63,7 +63,7 @@ Options
     --dry-run        Compute and print the split summary but do not write metadata.parquet
     --log-level      Default: INFO
 """
-
+from __future__ import annotations
 import argparse
 import logging
 import sys

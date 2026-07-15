@@ -25,6 +25,7 @@ Output layout
         config.yaml       # copy of the config used, for reproducibility
 """
 from __future__ import annotations
+
 import argparse
 import json
 import logging
@@ -41,7 +42,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 
 sys.path.insert(0, str(Path(__file__).parent.parent))  # adds src/ to path
 
-from modules.dataset import CachedFeatureDataset, make_mixup_collate_fn
+from modules.dataset import CachedFeatureDataset, make_mixup_collate_fn, _LABEL_COLUMNS
 from modules.models import build_model
 from modules.losses import build_loss
 from modules.metrics import compute_all_metrics, predict_dataset
@@ -76,7 +77,7 @@ def set_seed(seed: int):
 
 # ── Data selection ──────────────────────────────────────────────────────────
 
-def build_metadata_filters(meta: pd.DataFrame, data_cfg: dict) -> dict[str, pd.DataFrame]:
+def build_metadata_filters(meta: pd.DataFrame, data_cfg: dict, seed: int = 42) -> dict[str, pd.DataFrame]:
     """
     Apply the experiment config's data-selection rules to the full metadata
     DataFrame, returning {"train": df, "val": df, "test": df}.
@@ -84,12 +85,22 @@ def build_metadata_filters(meta: pd.DataFrame, data_cfg: dict) -> dict[str, pd.D
     val/test ALWAYS restrict to source_type == "real" regardless of
     data_cfg["source_types"], since augmented/synthetic data should never be
     used to estimate generalisation.
+
+    data_cfg["max_per_class"], if set, is a {label_value: max_count} dict
+    that DOWNSAMPLES the TRAIN pool only (never val/test) for classes whose
+    row count exceeds the given cap — e.g. {"normal": 2000} to reproduce a
+    majority class being capped rather than augmented. Classes not present
+    as keys are left untouched. Sampling is row-level (this function is
+    always called after the pool has already been filtered to a single
+    feature_type, so each cycle_id appears at most once here) and seeded by
+    `seed` for reproducibility.
     """
     feature_type = data_cfg["feature_type"]
     datasets = data_cfg["datasets"]
     source_types = data_cfg.get("source_types", ["real"])
     generators = data_cfg.get("generators")
     exclude_poor_quality = data_cfg.get("exclude_poor_quality", False)
+    max_per_class = data_cfg.get("max_per_class")
 
     df = meta[
         (meta["feature_type"] == feature_type)
@@ -112,6 +123,22 @@ def build_metadata_filters(meta: pd.DataFrame, data_cfg: dict) -> dict[str, pd.D
         return out
 
     train_pool = _filter_pool(df[df["split"] == "train"], source_types)
+
+    if max_per_class:
+        label_col = _LABEL_COLUMNS[data_cfg.get("label_scheme", "4class")]
+        pieces = []
+        for label, group in train_pool.groupby(label_col, dropna=False):
+            cap = max_per_class.get(label)
+            if cap is not None and len(group) > cap:
+                before = len(group)
+                group = group.sample(n=cap, random_state=seed)
+                logger.info(
+                    "max_per_class: downsampled %r from %d to %d rows "
+                    "(label_col=%s, seed=%d)", label, before, cap, label_col, seed,
+                )
+            pieces.append(group)
+        train_pool = pd.concat(pieces).sort_index()
+
     val_pool = df[(df["split"] == "val") & (df["source_type"] == "real")]
     test_pool = df[(df["split"] == "test") & (df["source_type"] == "real")]
 
@@ -374,7 +401,7 @@ def main():
         sys.exit(1)
     meta = pd.read_parquet(meta_file)
 
-    pools = build_metadata_filters(meta, data_cfg)
+    pools = build_metadata_filters(meta, data_cfg, seed=run_cfg.get("seed", 42))
     class_list = data_cfg["class_list"]
     feature_type = data_cfg["feature_type"]
 
@@ -526,8 +553,8 @@ def main():
 
     # ── Final test evaluation (using best checkpoint) ────────────────────────
     test_metrics = {}
-    if test_loader is not None and (ckpt_dir / "best.pt").exists():
-        best_ckpt = torch.load(ckpt_dir / "best.pt", map_location=device)
+    if test_loader is not None and (ckpt_dir / "last.pt").exists():
+        best_ckpt = torch.load(ckpt_dir / "last.pt", map_location=device)
         model.load_state_dict(best_ckpt["model_state_dict"])
         test_subset_col = (
             pools["test"].drop_duplicates(subset=["cycle_id"])["test_subset"].values

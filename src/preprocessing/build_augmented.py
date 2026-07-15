@@ -109,7 +109,7 @@ Options
                      without writing anything.
     --log-level      Logging verbosity. Default: INFO
 """
-
+from __future__ import annotations
 import argparse
 import json
 import logging

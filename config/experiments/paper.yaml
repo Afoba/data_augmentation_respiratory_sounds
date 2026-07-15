@@ -19,6 +19,8 @@ data:
   source_types: [real, augmented]
   generators: ["noise_ds__additive_gaussian_noise"]
   exclude_poor_quality: false
+  max_per_class:
+    normal: 2000
 
 data_loader:
   batch_size: 32
