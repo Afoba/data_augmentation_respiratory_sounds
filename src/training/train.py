@@ -25,7 +25,6 @@ Output layout
         config.yaml       # copy of the config used, for reproducibility
 """
 from __future__ import annotations
-
 import argparse
 import json
 import logging
@@ -279,11 +278,10 @@ def build_scheduler(optimizer: torch.optim.Optimizer, sched_cfg: dict, epochs: i
         )
     elif name == "plateau":
         return torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, 
+            optimizer,
             mode='min',      # 'min' if monitoring validation loss, 'max' for accuracy
             factor=sched_cfg.get("factor", 0.5),      # The "gradient factor"
-            patience=sched_cfg.get("patience", 10), 
-            verbose=True
+            patience=sched_cfg.get("patience", 10),
         )
     else:
         raise ValueError(f"Unknown scheduler: {name!r}. Choose 'none', 'cosine', or 'step'.")
