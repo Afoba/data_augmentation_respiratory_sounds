@@ -76,6 +76,18 @@ def set_seed(seed: int):
 
 # ── Data selection ──────────────────────────────────────────────────────────
 
+def log_class_breakdown(name: str, df: pd.DataFrame, label_col: str) -> None:
+    """Log a per-class row count for one pool (train/val/test), so the exact
+    composition actually being used can be confirmed before/during a run —
+    total pool size alone (as logged in build_metadata_filters) doesn't show
+    whether e.g. a --target-map or max_per_class landed where intended."""
+    if df.empty:
+        logger.info("%s pool: empty", name)
+        return
+    counts = df[label_col].value_counts(dropna=False).to_dict()
+    logger.info("%s pool (%d rows) — %s", name, len(df), counts)
+
+
 def build_metadata_filters(meta: pd.DataFrame, data_cfg: dict, seed: int = 42) -> dict[str, pd.DataFrame]:
     """
     Apply the experiment config's data-selection rules to the full metadata
@@ -89,10 +101,28 @@ def build_metadata_filters(meta: pd.DataFrame, data_cfg: dict, seed: int = 42) -
     that DOWNSAMPLES the TRAIN pool only (never val/test) for classes whose
     row count exceeds the given cap — e.g. {"normal": 2000} to reproduce a
     majority class being capped rather than augmented. Classes not present
-    as keys are left untouched. Sampling is row-level (this function is
-    always called after the pool has already been filtered to a single
-    feature_type, so each cycle_id appears at most once here) and seeded by
-    `seed` for reproducibility.
+    as keys are left untouched. Caps the AGGREGATE pool per class (real +
+    every included generator's rows pooled together first, then capped) —
+    correct for cases like a plain majority-class downsample, but NOT for
+    reproducing a specific split between real and synthetic proportions,
+    since it doesn't know or preserve where the sampled rows came from.
+
+    data_cfg["max_per_class_per_group"] is for exactly that latter case: a
+    {label_value: max_count} dict where the cap is applied INDEPENDENTLY to
+    each (label, source) subgroup — "source" being "real" or the row's
+    generator string. E.g. {"crackle": 500} with real crackle=1864 and two
+    generators each contributing 500 gives 500 (downsampled from 1864) +
+    500 + 500 = 1500 real+synthetic, matching a paper's "500 from each of
+    three pools" design — NOT what max_per_class would give you here, since
+    that caps the pooled 2864 down to 500 total with proportions determined
+    by chance rather than an even three-way split. Use whichever matches
+    what you're trying to reproduce; both can be set at once (max_per_class
+    applied first, then max_per_class_per_group on what remains) but that's
+    an unusual combination — check the logs if you do.
+
+    Sampling is row-level (this function is always called after the pool
+    has already been filtered to a single feature_type, so each cycle_id
+    appears at most once here) and seeded by `seed` for reproducibility.
     """
     feature_type = data_cfg["feature_type"]
     datasets = data_cfg["datasets"]
@@ -100,6 +130,7 @@ def build_metadata_filters(meta: pd.DataFrame, data_cfg: dict, seed: int = 42) -
     generators = data_cfg.get("generators")
     exclude_poor_quality = data_cfg.get("exclude_poor_quality", False)
     max_per_class = data_cfg.get("max_per_class")
+    max_per_class_per_group = data_cfg.get("max_per_class_per_group")
 
     df = meta[
         (meta["feature_type"] == feature_type)
@@ -134,6 +165,26 @@ def build_metadata_filters(meta: pd.DataFrame, data_cfg: dict, seed: int = 42) -
                 logger.info(
                     "max_per_class: downsampled %r from %d to %d rows "
                     "(label_col=%s, seed=%d)", label, before, cap, label_col, seed,
+                )
+            pieces.append(group)
+        train_pool = pd.concat(pieces).sort_index()
+
+    if max_per_class_per_group:
+        label_col = _LABEL_COLUMNS[data_cfg.get("label_scheme", "4class")]
+        # "real" is a literal placeholder here — a real row's own generator
+        # value is always None/NaN, so fillna gives every real row an
+        # explicit, groupable source tag alongside the actual generator
+        # strings for augmented/synthetic rows.
+        source_group = train_pool["generator"].fillna("real")
+        pieces = []
+        for (label, src), group in train_pool.groupby([train_pool[label_col], source_group], dropna=False):
+            cap = max_per_class_per_group.get(label)
+            if cap is not None and len(group) > cap:
+                before = len(group)
+                group = group.sample(n=cap, random_state=seed)
+                logger.info(
+                    "max_per_class_per_group: downsampled %r/%r from %d to %d rows "
+                    "(label_col=%s, seed=%d)", label, src, before, cap, label_col, seed,
                 )
             pieces.append(group)
         train_pool = pd.concat(pieces).sort_index()
@@ -371,6 +422,9 @@ def main():
     parser = argparse.ArgumentParser(description="Train a respiratory sound classifier from an experiment config.")
     parser.add_argument("--config", required=True, help="Path to the experiment YAML config")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Build and log the train/val/test pools (including per-class breakdown) "
+                             "then exit, without creating datasets, the model, or training.")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -402,6 +456,14 @@ def main():
     pools = build_metadata_filters(meta, data_cfg, seed=run_cfg.get("seed", 42))
     class_list = data_cfg["class_list"]
     feature_type = data_cfg["feature_type"]
+    label_col = _LABEL_COLUMNS[data_cfg["label_scheme"]]
+
+    for pool_name in ("train", "val", "test"):
+        log_class_breakdown(pool_name, pools[pool_name], label_col)
+
+    if args.dry_run:
+        logger.info("--dry-run set: exiting before dataset/model construction.")
+        return
 
     # ── Datasets / loaders ───────────────────────────────────────────────────
     train_transform = build_train_transform(cfg.get("augmentation", {}))

@@ -12,3 +12,15 @@ python src/preprocessing/build_augmented.py --target-map crackle=2044 wheeze=163
 
 python src/preprocessing/build_augmented.py --target-map crackle=2044 wheeze=1636 both=1706 ^
     --techniques pitch_shift --generator-prefix pitch_ds --workers 4
+
+python src/preprocessing/build_specaug.py --target-map crackle=2044 wheeze=1636 both=1706 ^
+    --generator-prefix offline_aug --workers 4
+
+python src/preprocessing/build_balanced_specflip.py --mode vertical ^
+    --target 500 --exact --generator-prefix specflip_v --workers 4
+
+python src/preprocessing/build_balanced_specflip.py --mode horizontal ^
+    --target 500 --exact --generator-prefix specflip_h --workers 4
+
+python src/preprocessing/build_mixup_pairs.py --n-samples 500 ^
+    --generator-prefix specmixup --workers 4

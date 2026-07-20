@@ -1,0 +1,89 @@
+# Experiment configuration — one file per run.
+# This is the single source of truth for reproducing a training run: it
+# specifies data selection, model, loss, optimizer, and run bookkeeping.
+#
+# Usage: python src/training/train.py --config config/experiments/baseline_icbhi_resnet18.yaml
+
+run:
+  name: time_stretch      # used as the output subdirectory name
+  seed: 42
+  output_dir: results                # checkpoints/results land under <output_dir>/<run.name>/
+  device: cuda                       # "cuda" | "cpu" | "mps" — falls back to cpu if unavailable
+
+data:
+  features_cfg: config/features.yaml
+  feature_type: logmel
+  label_scheme: 4class
+  class_list: [normal, crackle, wheeze, both]
+  datasets: [icbhi]
+  source_types: [real, augmented]  # "real" = original recordings, "augmented" = pre-cached data
+  generators: ["stretch_ds__time_stretch"]
+  exclude_poor_quality: false
+  max_per_class:
+    normal: 2000
+
+data_loader:
+  batch_size: 64
+  num_workers: 4
+  shuffle_train: true
+  weighted_sampler: false           # opt-in minority-class oversampling via WeightedRandomSampler.
+                                     # When true, shuffle_train is ignored (sampler controls draw order).
+                                     # NOTE: using this alongside loss.class_weighting applies two
+                                     # independent imbalance corrections and can over-correct — use
+                                     # one or the other unless you have a specific reason to combine.
+  weighted_sampler_strategy: inverse_frequency
+                                     # only used when weighted_sampler: true.
+                                     # same options as loss.class_weighting:
+                                     # "inverse_frequency" | "inverse_sqrt_frequency" | "effective_number"
+
+augmentation:
+  # On-the-fly spectrogram augmentation applied to TRAINING data only
+  # (never applied to val/test). See preprocessing/augmentation/spectrogram.py.
+  # Note: pitch-shifting is NOT configured here — it is controlled through
+  # data.source_types (whether to include pre-cached pitch-shifted data)
+  # rather than being applied live during training.
+  spec_augment:
+    enabled: false
+    freq_mask_param: 15
+    time_mask_param: 25
+    n_freq_masks: 2
+    n_time_masks: 2
+    p: 0.8
+  mixup:
+    enabled: false
+    alpha: 0.4
+    label_mode: soft                 # "soft" | "same_class_only"
+    p: 0.5
+
+model:
+  name: vgg11
+  pretrained: false                   # requires internet access on first run (downloads + caches weights)
+  freeze_backbone: false             # true = linear probe, false = full fine-tune
+  input_size: [224, 224]
+
+loss:
+  class_weighting: none              # "none" (default) | "inverse_frequency" |
+                                      # "inverse_sqrt_frequency" | "effective_number"
+  beta: 0.999                        # only used if class_weighting: effective_number
+  label_smoothing: 0.0
+
+optimizer:
+  name: adamw                        # "adamw" | "sgd"
+  lr: 0.0002
+  weight_decay: 0.0001
+  momentum: 0.9                      # only used if optimizer.name: sgd
+
+scheduler:
+  name: plateau                       # "none" | "cosine" | "step" | "plateau"
+  step_size: 10                      # only used if scheduler.name: step
+  gamma: 0.1                         # only used if scheduler.name: step
+
+  patience: 5                        # only used if scheduler.name: plateau
+  factor: 0.5                          # only used if scheduler.name: plateau
+
+training:
+  epochs: 150
+  early_stopping_patience: 25         # epochs with no val-metric improvement before stopping; null to disable
+  checkpoint_metric: icbhi_score     # which val metric to track for "best" checkpoint:
+                                      # "icbhi_score" | "accuracy" | "f1_macro"
+  grad_clip_norm: null               # optional gradient clipping max-norm; null to disable
