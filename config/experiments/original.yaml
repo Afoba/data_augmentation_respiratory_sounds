@@ -5,7 +5,7 @@
 # Usage: python src/training/train.py --config config/experiments/baseline_icbhi_resnet18.yaml
 
 run:
-  name: time_stretch      # used as the output subdirectory name
+  name: original      # used as the output subdirectory name
   seed: 42
   output_dir: results                # checkpoints/results land under <output_dir>/<run.name>/
   device: cuda                       # "cuda" | "cpu" | "mps" — falls back to cpu if unavailable
@@ -16,8 +16,8 @@ data:
   label_scheme: 4class
   class_list: [normal, crackle, wheeze, both]
   datasets: [icbhi]
-  source_types: [real, augmented]  # "real" = original recordings, "augmented" = pre-cached data
-  generators: ["stretch_ds__time_stretch"]
+  source_types: [real]  # "real" = original recordings, "augmented" = pre-cached data
+  generators: []
   exclude_poor_quality: false
   max_per_class:
     normal: 2000

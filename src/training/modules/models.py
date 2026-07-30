@@ -40,7 +40,7 @@ runs on-GPU as part of the forward pass and so swapping it out for a
 different adaptation strategy later is a one-line change in build_resnet18,
 not a pipeline-wide change.
 """
-
+from __future__ import annotations
 import logging
 from typing import Callable
 
@@ -120,6 +120,14 @@ def build_resnet18(cfg: dict, n_classes: int) -> nn.Module:
                         backbone. 224 matches standard pretrained weights;
                         changing this is allowed but moves off-distribution
                         from what the weights were trained on.
+        dropout       : float, default 0.0 (disabled). Standard torchvision
+                        ResNet-18 has NO dropout anywhere — unlike VGG-11,
+                        there's nothing pre-existing to override. Setting
+                        this > 0 inserts a new nn.Dropout right before the
+                        final Linear(512, n_classes) layer (applied to the
+                        512-d pooled feature vector), the standard place to
+                        add it to a ResNet head. Always trains regardless of
+                        freeze_backbone, same as the fc layer itself.
 
     Returns
     -------
@@ -133,6 +141,7 @@ def build_resnet18(cfg: dict, n_classes: int) -> nn.Module:
     pretrained = model_cfg.get("pretrained", True)
     freeze_backbone = model_cfg.get("freeze_backbone", False)
     input_size = tuple(model_cfg.get("input_size", [224, 224]))
+    dropout = model_cfg.get("dropout", 0.0)
 
     weights = ResNet18_Weights.DEFAULT if pretrained else None
     try:
@@ -152,8 +161,13 @@ def build_resnet18(cfg: dict, n_classes: int) -> nn.Module:
     # Replace the final FC layer to match our class count. This layer is
     # ALWAYS trained from scratch (random init), regardless of freeze_backbone,
     # since the pretrained 1000-way ImageNet head has no meaning for our task.
+    # If dropout > 0, insert it right before this layer — ResNet-18 has no
+    # dropout of its own to override, so this is purely additive.
     in_features = backbone.fc.in_features
-    backbone.fc = nn.Linear(in_features, n_classes)
+    if dropout > 0:
+        backbone.fc = nn.Sequential(nn.Dropout(dropout), nn.Linear(in_features, n_classes))
+    else:
+        backbone.fc = nn.Linear(in_features, n_classes)
 
     if freeze_backbone:
         for name, param in backbone.named_parameters():
@@ -161,12 +175,13 @@ def build_resnet18(cfg: dict, n_classes: int) -> nn.Module:
                 param.requires_grad = False
         logger.info(
             "ResNet-18: backbone frozen (linear probe mode) — only fc layer "
-            "(%d params) will train.", sum(p.numel() for p in backbone.fc.parameters()),
+            "(%d params, dropout=%.2f) will train.",
+            sum(p.numel() for p in backbone.fc.parameters()), dropout,
         )
     else:
         logger.info(
-            "ResNet-18: full fine-tune mode — all %d params will train.",
-            sum(p.numel() for p in backbone.parameters()),
+            "ResNet-18: full fine-tune mode — all %d params will train (dropout=%.2f).",
+            sum(p.numel() for p in backbone.parameters()), dropout,
         )
 
     adapter = SpectrogramToRGB(target_size=input_size)
@@ -264,6 +279,21 @@ def build_vgg11(cfg: dict, n_classes: int) -> nn.Module:
                           False -> full fine-tune: entire network trains.
         input_size      : [H, W], default [224, 224]. Resize target fed to
                           the backbone — same role as in ResNet-18.
+        dropout         : float or null, default null (leave as-is).
+                          Unlike ResNet-18, torchvision's VGG-11 ALREADY has
+                          two nn.Dropout(p=0.5) layers built into its
+                          classifier (classifier[2] and classifier[5], each
+                          between the 4096-wide Linear layers) — this is
+                          standard VGG architecture, not something this repo
+                          added, and it's what the paper's own VGG-11
+                          inherits too ("the only difference from the
+                          original model lies on the softmax layer"). The
+                          default (null) leaves both at their pretrained
+                          p=0.5, matching the paper. Setting dropout to a
+                          float overrides BOTH layers' p to that value —
+                          e.g. dropout: 0.3 to reduce regularisation
+                          strength, or dropout: 0.0 to disable dropout
+                          entirely and compare against ResNet-18's default.
 
     Architectural note: VGG-11's classifier is a 3-layer Sequential
     (4096 -> 4096 -> 1000 for ImageNet), unlike ResNet-18's single fc layer.
@@ -288,6 +318,7 @@ def build_vgg11(cfg: dict, n_classes: int) -> nn.Module:
     pretrained = model_cfg.get("pretrained", True)
     freeze_backbone = model_cfg.get("freeze_backbone", False)
     input_size = tuple(model_cfg.get("input_size", [224, 224]))
+    dropout = model_cfg.get("dropout")  # None = leave torchvision's default p=0.5 as-is
 
     weights = VGG11_Weights.DEFAULT if pretrained else None
     try:
@@ -311,6 +342,14 @@ def build_vgg11(cfg: dict, n_classes: int) -> nn.Module:
     in_features = backbone.classifier[6].in_features
     backbone.classifier[6] = nn.Linear(in_features, n_classes)
 
+    # Override the two existing Dropout layers' p if requested. indices 2
+    # and 5 are architectural constants of torchvision's VGG — see the
+    # printed Sequential in this function's docstring history / torchvision
+    # source, not something that shifts with n_classes or pretrained.
+    if dropout is not None:
+        backbone.classifier[2] = nn.Dropout(p=dropout)
+        backbone.classifier[5] = nn.Dropout(p=dropout)
+
     if freeze_backbone:
         # "Backbone" = convolutional feature extractor only (features +
         # avgpool). The entire classifier Sequential (all three Linear
@@ -323,13 +362,14 @@ def build_vgg11(cfg: dict, n_classes: int) -> nn.Module:
         trainable = sum(p.numel() for p in backbone.classifier.parameters())
         logger.info(
             "VGG-11: backbone (features+avgpool) frozen (linear probe mode) — "
-            "classifier head (%d params across 3 Linear layers) will train.",
-            trainable,
+            "classifier head (%d params across 3 Linear layers, dropout=%s) will train.",
+            trainable, "0.5 (default)" if dropout is None else f"{dropout:.2f}",
         )
     else:
         logger.info(
-            "VGG-11: full fine-tune mode — all %d params will train.",
+            "VGG-11: full fine-tune mode — all %d params will train (dropout=%s).",
             sum(p.numel() for p in backbone.parameters()),
+            "0.5 (default)" if dropout is None else f"{dropout:.2f}",
         )
 
     adapter = SpectrogramToRGB(target_size=input_size)

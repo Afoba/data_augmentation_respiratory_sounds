@@ -66,7 +66,6 @@ Usage
     python build_balanced_specflip.py --mode both --target 500 \\
         --generator-prefix specflip_b --workers 4
 """
-
 from __future__ import annotations
 import argparse
 import json

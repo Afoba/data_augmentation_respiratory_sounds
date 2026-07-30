@@ -20,7 +20,8 @@ data:
   generators: ["specmixup__mixup"]
   exclude_poor_quality: false
   max_per_class:
-    normal: 2000
+    normal: 1000
+    crackle: 1000
 
 data_loader:
   batch_size: 64
@@ -57,9 +58,10 @@ augmentation:
 
 model:
   name: vgg11
-  pretrained: false                   # requires internet access on first run (downloads + caches weights)
+  pretrained: true                   # requires internet access on first run (downloads + caches weights)
   freeze_backbone: false             # true = linear probe, false = full fine-tune
   input_size: [224, 224]
+  dropout: 0.5
 
 loss:
   class_weighting: none              # "none" (default) | "inverse_frequency" |

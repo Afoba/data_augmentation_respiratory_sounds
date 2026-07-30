@@ -17,10 +17,13 @@ data:
   class_list: [normal, crackle, wheeze, both]
   datasets: [icbhi]
   source_types: [real, augmented]  # "real" = original recordings, "augmented" = pre-cached data
-  generators: ["specflip_b__specflip_both"]
+  generators: ["specflip_v__specflip_vertical", "specflip_h__specflip_horizontal"]
   exclude_poor_quality: false
-  max_per_class:
-    normal: 2000
+  max_per_class_per_group:
+    normal: 500
+    crackle: 500
+    wheeze: 500
+    both: 500
 
 data_loader:
   batch_size: 64
@@ -57,9 +60,10 @@ augmentation:
 
 model:
   name: vgg11
-  pretrained: false                   # requires internet access on first run (downloads + caches weights)
+  pretrained: true                   # requires internet access on first run (downloads + caches weights)
   freeze_backbone: false             # true = linear probe, false = full fine-tune
   input_size: [224, 224]
+  dropout: 0.5
 
 loss:
   class_weighting: none              # "none" (default) | "inverse_frequency" |
