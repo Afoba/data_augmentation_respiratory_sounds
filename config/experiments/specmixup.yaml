@@ -67,7 +67,7 @@ loss:
   class_weighting: none              # "none" (default) | "inverse_frequency" |
                                       # "inverse_sqrt_frequency" | "effective_number"
   beta: 0.999                        # only used if class_weighting: effective_number
-  label_smoothing: 0.0
+  label_smoothing: 0.1
 
 optimizer:
   name: adamw                        # "adamw" | "sgd"
